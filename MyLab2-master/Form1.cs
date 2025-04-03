@@ -1,278 +1,228 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
 using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
 using System.Data.SqlClient;
-using System.Security.Cryptography;
+using System.Windows.Forms;
 using MyLab2.Pages;
+
 
 namespace MyLab2
 {
     public partial class Form1 : Form
     {
-        public static string cs = @"Data Source = (localdb)\MSSQLLocalDB; Initial Catalog = FoodIntakes; Integrated Security = true";
+        public static string ConnectionString =
+    @"Data Source=(LocalDB)\MSSQLLocalDB;
+      AttachDbFilename=C:\Temp\PerfumeShopDB.mdf;
+      Integrated Security=True;
+      Connect Timeout=30"; 
+
+
         public Form1()
         {
             InitializeComponent();
         }
-        private void button1_Click(object sender, EventArgs e) 
-        {
-            LoadPersons();
-            treeView1.SelectedNode = null;
 
+        private void btnLoad_Click(object sender, EventArgs e)
+        {
+            LoadBrands();
+            treeView1.SelectedNode = null;
         }
 
-        public void LoadPersons()
+        public void LoadBrands()
         {
             treeView1.Nodes.Clear();
-            using (SqlConnection cn = new SqlConnection(cs))
+            using (SqlConnection cn = new SqlConnection(ConnectionString))
             {
                 cn.Open();
-                var sql = "select * from person";
+                var sql = "SELECT * FROM Brands";
                 var cmd = new SqlCommand(sql, cn);
 
                 var dr = cmd.ExecuteReader();
 
                 while (dr.Read())
                 {
-                    TreeNode n = new TreeNode(dr["Name"].ToString());
-                    n.Tag = dr["id"];
-                    n.Name = (string)dr["Name"];
-                    treeView1.Nodes.Add(n);
-                    LoadMeals((int)dr["id"], n);
+                    TreeNode brandNode = new TreeNode(dr["Name"].ToString());
+                    brandNode.Tag = dr["Id"];
+                    brandNode.Name = dr["Name"].ToString();
+                    treeView1.Nodes.Add(brandNode);
+                    LoadPerfumes((int)dr["Id"], brandNode);
                 }
             }
-            
         }
-        public void LoadMeals(int personId, TreeNode parent)
+
+        public void LoadPerfumes(int brandId, TreeNode parent)
         {
-            using (SqlConnection cn = new SqlConnection(cs))
+            using (SqlConnection cn = new SqlConnection(ConnectionString))
             {
                 cn.Open();
-                var sql = @"select  meals.meal_time, meals.id from meals
-                                            where meals.person_id = @persinId;";
+                var sql = @"SELECT Id, Name FROM Perfumes
+                          WHERE BrandId = @brandId";
                 var cmd = new SqlCommand(sql, cn);
-                cmd.Parameters.AddWithValue("@persinId", personId);
-
+                cmd.Parameters.AddWithValue("@brandId", brandId);
 
                 var dr = cmd.ExecuteReader();
 
                 while (dr.Read())
                 {
-                    TreeNode n = new TreeNode(dr["meal_time"].ToString());
-                    n.Tag = dr["id"];
-                    parent.Nodes.Add(n);
-                    LoadDishes((int)dr["id"], n);
+                    TreeNode perfumeNode = new TreeNode(dr["Name"].ToString());
+                    perfumeNode.Tag = dr["Id"];
+                    parent.Nodes.Add(perfumeNode);
+                    LoadNotes((int)dr["Id"], perfumeNode);
                 }
             }
         }
-        public void LoadDishes(int mealId, TreeNode parent)
+
+        public void LoadNotes(int perfumeId, TreeNode parent)
         {
-            using (SqlConnection cn = new SqlConnection(cs))
+            using (SqlConnection cn = new SqlConnection(ConnectionString))
             {
                 cn.Open();
-                var sql = @"select dishes.name, dishes.id from dishes
-                                    where dishes.meal_id = @mealId;";
+                var sql = @"SELECT n.Id, n.Name, pn.NoteType 
+                          FROM Notes n
+                          JOIN PerfumeNotes pn ON n.Id = pn.NoteId
+                          WHERE pn.PerfumeId = @perfumeId";
                 var cmd = new SqlCommand(sql, cn);
-                cmd.Parameters.AddWithValue("@mealId", mealId);
-
+                cmd.Parameters.AddWithValue("@perfumeId", perfumeId);
 
                 var dr = cmd.ExecuteReader();
 
                 while (dr.Read())
                 {
-                    TreeNode n = new TreeNode(dr["name"].ToString());
-                    n.Tag = dr["id"];
-                    parent.Nodes.Add(n);
-                    LoadProducts((int)dr["id"], n);
-                }
-            }
-        }
-        public void LoadProducts(int dishId, TreeNode parent)
-        {
-            using (SqlConnection cn = new SqlConnection(cs))
-            {
-                cn.Open();
-                var sql = @"select products.name, products.id from products
-                                            where products.dish_id = @dishId;";
-                var cmd = new SqlCommand(sql, cn);
-                cmd.Parameters.AddWithValue("@dishId", dishId);
-
-
-                var dr = cmd.ExecuteReader();
-
-                while (dr.Read())
-                {
-                    TreeNode n = new TreeNode(dr["name"].ToString());
-                    n.Tag = dr["id"];
-                    parent.Nodes.Add(n);
+                    TreeNode noteNode = new TreeNode($"{dr["Name"]} ({dr["NoteType"]})");
+                    noteNode.Tag = dr["Id"];
+                    parent.Nodes.Add(noteNode);
                 }
             }
         }
 
-        private void удалитьToolStripMenuItem_Click(object sender, EventArgs e)
+        private void deleteToolStripMenuItem_Click(object sender, EventArgs e)
         {
-     
-            if (treeView1.SelectedNode != null && treeView1.SelectedNode.Level == 0)
+            if (treeView1.SelectedNode == null) return;
+
+            try
             {
-                
-                using (var cn = new SqlConnection(cs))
+                using (var cn = new SqlConnection(ConnectionString))
                 {
                     cn.Open();
-                    var sql = @"delete from person where id = @id;";
+                    string sql = "";
+                    string confirmMessage = "";
 
-                    var cmd = new SqlCommand(sql, cn);
-                    cmd.Parameters.AddWithValue("@id", treeView1.SelectedNode.Tag);
+                    switch (treeView1.SelectedNode.Level)
+                    {
+                        case 0: // Бренд
+                            sql = "DELETE FROM Brands WHERE Id = @id";
+                            confirmMessage = "Удалить этот бренд и все связанные парфюмы?";
+                            break;
+                        case 1: // Парфюм
+                            sql = "DELETE FROM Perfumes WHERE Id = @id";
+                            confirmMessage = "Удалить этот парфюм и все связанные ноты?";
+                            break;
+                        case 2: // Нота
+                            sql = "DELETE FROM PerfumeNotes WHERE NoteId = @id";
+                            confirmMessage = "Удалить эту ноту из парфюма?";
+                            break;
+                    }
 
-                    cmd.ExecuteNonQuery();
-                    treeView1.SelectedNode.Remove();
-                    LoadPersons();
-                }
-
-            }
-       
-            if (treeView1.SelectedNode != null && treeView1.SelectedNode.Level == 1)
-            {
-                using (var cn = new SqlConnection(cs))
-                {
-                    cn.Open();
-                    var sql = @"delete from meals where id = @id;";
-
-                    var cmd = new SqlCommand(sql, cn);
-                    cmd.Parameters.AddWithValue("@id", treeView1.SelectedNode.Tag);
-
-                    cmd.ExecuteNonQuery();
-                    treeView1.SelectedNode.Remove();
-                    LoadPersons();
-                }
-            }
-       
-            if (treeView1.SelectedNode != null && treeView1.SelectedNode.Level == 2)
-            {
-                using (var cn = new SqlConnection(cs))
-                {
-                    cn.Open();
-                    var sql = @"delete from dishes where id = @id;";
-
-                    var cmd = new SqlCommand(sql, cn);
-                    cmd.Parameters.AddWithValue("@id", treeView1.SelectedNode.Tag);
-
-                    cmd.ExecuteNonQuery();
-                    treeView1.SelectedNode.Remove();
-                    LoadPersons();
+                    if (MessageBox.Show(confirmMessage, "Подтверждение",
+                        MessageBoxButtons.YesNo) == DialogResult.Yes)
+                    {
+                        var cmd = new SqlCommand(sql, cn);
+                        cmd.Parameters.AddWithValue("@id", treeView1.SelectedNode.Tag);
+                        cmd.ExecuteNonQuery();
+                        treeView1.SelectedNode.Remove();
+                        LoadBrands();
+                    }
                 }
             }
-
-            if (treeView1.SelectedNode != null && treeView1.SelectedNode.Level == 3)
+            catch (Exception ex)
             {
-                using (var cn = new SqlConnection(cs))
-                {
-                    cn.Open();
-                    var sql = @"delete from products where id = @id;";
-
-                    var cmd = new SqlCommand(sql, cn);
-                    cmd.Parameters.AddWithValue("@id", treeView1.SelectedNode.Tag);
-
-                    cmd.ExecuteNonQuery();
-                    treeView1.SelectedNode.Remove();
-                    LoadPersons();
-                }
+                MessageBox.Show($"Ошибка при удалении: {ex.Message}");
             }
         }
 
-      
-
-        private void добавитьToolStripMenuItem_Click(object sender, EventArgs e)
+        private void addToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            if (treeView1.SelectedNode.Level == 0)
+            if (treeView1.SelectedNode == null) return;
+
+            switch (treeView1.SelectedNode.Level)
             {
-                AddMeal addMeal = new AddMeal();
-                addMeal.personId = (int)treeView1.SelectedNode.Tag;
-                addMeal.ShowDialog();
-                LoadPersons();
+                case 0: // Добавление парфюма к бренду
+                    AddPerfume addPerfume = new AddPerfume();
+                    addPerfume.BrandId = (int)treeView1.SelectedNode.Tag;
+                    if (addPerfume.ShowDialog() == DialogResult.OK)
+                        LoadBrands();
+                    break;
+
+                case 1: // Добавление ноты к парфюму
+                    AddPerfumeNote addNote = new AddPerfumeNote();
+                    addNote.PerfumeId = (int)treeView1.SelectedNode.Tag;
+                    if (addNote.ShowDialog() == DialogResult.OK)
+                        LoadBrands();
+                    break;
             }
-            else if (treeView1.SelectedNode.Level == 1)
-            {
-                AddDish addDish = new AddDish();
-                addDish.mealId = (int)treeView1.SelectedNode.Tag;
-                addDish.ShowDialog();
-                LoadPersons();
-            }
-            else if (treeView1.SelectedNode.Level == 2)
-            {
-                AddProduct addProduct = new AddProduct();
-                addProduct.dishId = (int)treeView1.SelectedNode.Tag;
-                addProduct.ShowDialog();
-                LoadPersons();
-            }
-            
         }
 
-        private void добавитьПерсонуToolStripMenuItem_Click(object sender, EventArgs e)
+        private void addBrandToolStripMenuItem_Click(object sender, EventArgs e)
         {
-           
-            AddPerson addPerson = new AddPerson();
-            addPerson.ShowDialog();
-            treeView1.Nodes.Add(new TreeNode(AddPerson.name));
-            LoadPersons();
-            
+            AddBrand addBrand = new AddBrand();
+            if (addBrand.ShowDialog() == DialogResult.OK)
+            {
+                LoadBrands();
+            }
         }
 
-        private void contextMenuStrip1_Opening(object sender, CancelEventArgs e)
+        private void editToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (treeView1.SelectedNode == null) return;
+
+            switch (treeView1.SelectedNode.Level)
+            {
+                case 0: // Редактирование бренда
+                    UpdateBrand updateBrand = new UpdateBrand(
+                        (int)treeView1.SelectedNode.Tag,
+                        treeView1.SelectedNode.Text);
+                    if (updateBrand.ShowDialog() == DialogResult.OK)
+                        LoadBrands();
+                    break;
+
+                case 1: // Редактирование парфюма
+                    // Здесь нужно получить полные данные о парфюме из БД
+                    UpdatePerfume updatePerfume = new UpdatePerfume(
+                        (int)treeView1.SelectedNode.Tag,
+                        treeView1.SelectedNode.Text,
+                        0, ""); // Замените на реальные параметры
+                    if (updatePerfume.ShowDialog() == DialogResult.OK)
+                        LoadBrands();
+                    break;
+
+                case 2: // Редактирование ноты
+                    // Здесь нужно получить полные данные о ноте из БД
+                    UpdateNote updateNote = new UpdateNote(
+                        (int)treeView1.SelectedNode.Tag,
+                        treeView1.SelectedNode.Text.Split('(')[0].Trim(),
+                        ""); // Замените на реальный тип ноты
+                    if (updateNote.ShowDialog() == DialogResult.OK)
+                        LoadBrands();
+                    break;
+            }
+        }
+
+        private void contextMenuStrip1_Opening(object sender, System.ComponentModel.CancelEventArgs e)
         {
             if (treeView1.SelectedNode == null)
             {
-                добавитьПерсонуToolStripMenuItem.Enabled = true;
-                удалитьToolStripMenuItem.Enabled = false;
-                добавитьToolStripMenuItem.Enabled = false;
-                редактироватьToolStripMenuItem.Enabled = false;
+                addBrandToolStripMenuItem.Enabled = true;
+                deleteToolStripMenuItem.Enabled = false;
+                addToolStripMenuItem.Enabled = false;
+                editToolStripMenuItem.Enabled = false;
             }
-            else if (treeView1.SelectedNode.Level == 3)
+            else
             {
-                удалитьToolStripMenuItem.Enabled = true;
-                добавитьToolStripMenuItem.Enabled = false;
-                редактироватьToolStripMenuItem.Enabled = true;
-            }
-            else 
-            {
-                удалитьToolStripMenuItem.Enabled = true;
-                добавитьToolStripMenuItem.Enabled = true;
-                редактироватьToolStripMenuItem.Enabled = true;
-            }
+                addBrandToolStripMenuItem.Enabled = false;
+                deleteToolStripMenuItem.Enabled = true;
+                editToolStripMenuItem.Enabled = true;
 
-
-        }
-
-        private void редактироватьToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            if (treeView1.SelectedNode.Level == 0)
-            {
-                UpdatePerson updatePerson = new UpdatePerson(treeView1.SelectedNode.Name, (int)treeView1.SelectedNode.Tag);
-                updatePerson.ShowDialog();
-                LoadPersons();
-            }
-            else if (treeView1.SelectedNode.Level == 1)
-            {
-                UpdateMeal updateMeal = new UpdateMeal((int)treeView1.SelectedNode.Tag);
-                updateMeal.ShowDialog();
-                LoadPersons();
-            }
-            else if (treeView1.SelectedNode.Level == 2)
-            {
-                UpdateDish updateDish = new UpdateDish((int)treeView1.SelectedNode.Tag);
-                updateDish.ShowDialog();
-                LoadPersons();
-            }
-            else if (treeView1.SelectedNode.Level == 3)
-            {
-                UpdateProduct updateProduct = new UpdateProduct((int)treeView1.SelectedNode.Tag);
-                updateProduct.ShowDialog();
-                LoadPersons();
+                // Включаем добавление только для брендов и парфюмов
+                addToolStripMenuItem.Enabled = treeView1.SelectedNode.Level < 2;
             }
         }
     }
